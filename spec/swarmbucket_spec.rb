@@ -69,24 +69,29 @@ describe SwarmBucket do
         end
     end
 
-    [:get, :head].each do |method|
+    [:get, :head, :post].each do |method|
         context "\##{method}" do
-            it_behaves_like("http_redirected_request",method) do
-                let(:do_request) { swarmhttp.send method, 'objectname' }
+            it_behaves_like("http_redirected_request", method) do
+                args = case method
+                       when :get, :head
+                           [ method, 'objectname' ]
+                       when :post
+                           [method, 'objectname','body','content/type' ]
+                       end
+                let(:do_request) { swarmhttp.send *args}
             end
         end
     end
-    context '#post' do
-        it_behaves_like("http_redirected_request",:post) do
-            let(:do_request) { swarmhttp.post 'objectname','body','content/type' }
+    context 'lifepoints' do
+        before :each do
+            expect(Net::HTTPRedirection).to receive(:===)
+            .with(httpresponse).and_return(true, false)
+            allow(httpresponse).to receive(:[])
+            .with('location') { 'http://newhost/newpath?param' }
+            # Set current time during test at 2016-06-29 11:30:39 +0200
+            allow(Time).to receive(:now) { Time.at 1467192639 }
         end
         context '#post' do
-            before :each do
-                expect(Net::HTTPRedirection).to receive(:===)
-                .with(httpresponse).and_return(true, false)
-                allow(httpresponse).to receive(:[])
-                .with('location') { 'http://newhost/newpath?param' }
-            end
             subject { httprequests.last }
             context 'when ttl is not specified' do
                 before :each do
@@ -101,7 +106,6 @@ describe SwarmBucket do
             end
             context 'when ttl is specified' do
                 before :each do
-                    allow(Time).to receive(:now) { Time.at 1467192639 } # 2016-06-29 11:30:39 +0200
                     swarmhttp.post 'objectname','body','content/type', 14400
                 end
                 it 'sets a lifepoint header' do
@@ -110,6 +114,58 @@ describe SwarmBucket do
                 end
                 it 'sets the content-type header' do
                     expect(subject['Content-Type']).to eq 'content/type'
+                end
+            end
+        end
+        context '#present?' do
+            before :each do
+            end
+            subject { swarmhttp.present? 'objectname' }
+            context 'when the object does not exist' do
+                before :each do
+                    expect(Net::HTTPSuccess).to receive(:===)
+                    .with(httpresponse).and_return(false)
+                end
+                it { is_expected.to be false }
+            end
+            context 'when the object exists' do
+                before :each do
+                    expect(Net::HTTPSuccess).to receive(:===)
+                    .with(httpresponse).and_return(true)
+                end
+                context 'without a lifepoint' do
+                    before :each do
+                        allow(httpresponse).to receive(:[])
+                        .with('lifepoint') { nil }
+                    end
+                    it { is_expected.to be true }
+                end
+                context 'with a delete lifepoint' do
+                    before :each do
+                        allow(httpresponse).to receive(:[])
+                        .with('lifepoint')
+                        .and_return "[Wed, 29 Jun 2016 13:30:39 GMT] reps:16:4 deletable=True, [] delete"
+                    end
+                    it { is_expected.to be 14400 }
+                end
+                context 'with a non-delete lifepoint' do
+                    before :each do
+                        allow(httpresponse).to receive(:[])
+                        .with('lifepoint')
+                        .and_return "[Wed, 29 Jun 2016 13:30:39 GMT] reps:16:4 deletable=True, [] reps:2"
+                    end
+                    it { is_expected.to be true }
+                end
+                context 'with mutliple lifepoints' do
+                    before :each do
+                        allow(httpresponse).to receive(:[])
+                        .with('lifepoint') {[
+                            "[Wed, 29 Jun 2016 12:30:39 GMT] reps:16:4 deletable=False",
+                            "[Wed, 29 Jun 2016 13:30:39 GMT] reps:2 deletable=True",
+                            "[] delete"
+                        ].join ','}
+                    end
+                    it { is_expected.to be 14400 }
                 end
             end
         end

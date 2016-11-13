@@ -55,15 +55,27 @@ class SwarmBucket
         request.body = body
         request['Content-Type'] = contenttype
         if ttl
-            expires = (Time.now + ttl).gmtime.strftime '%a, %d %b %Y %H:%M:%S GMT'
-            request['lifepoint'] = "[#{expires}] reps=16:4, deletable=True, [] delete"
+            expires = (Time.now + ttl)
+            .gmtime.strftime '%a, %d %b %Y %H:%M:%S GMT'
+            request['lifepoint'] = [
+                "[#{expires}] reps=16:4, deletable=True",
+                "[] delete"
+            ]
         end
-        execute(request)
+        execute request
     end
 
+    # Check if an object exists
+    # returns
+    #    - false when the object does not exist
+    #    - true when object exists without a delete lifepoint
+    #    - the ttl (Fixnum) when the object exists with a delete lifepoint
     def present?(name)
         request = Net::HTTP::Head.new(swarmuri name)
-        Net::HTTPSuccess === execute(request)
+        response = execute request
+        return false unless Net::HTTPSuccess === response
+        myttl = ttl response
+        myttl.nil? ? true : myttl
     end
 
     private
@@ -73,8 +85,8 @@ class SwarmBucket
             http.request request
         end
         return response unless Net::HTTPRedirection === response
-        # If we resceive a redirect, update the request uri to the given location
-        # and re-issue the request
+        # If we resceive a redirect, update the request uri to the given
+        # location and re-issue the request
         location = response['location']
         request.uri = URI location
         execute request
@@ -82,6 +94,13 @@ class SwarmBucket
 
     def swarmuri(name)
         URI "#{@baseurl}/#{name}"
+    end
+
+    # Returns the ttl of the object when a delete lifepoint is set
+    # Otherwise return nil
+    def ttl (response)
+        DateTime.httpdate($1).to_time.to_i - Time.now.gmtime.to_i if 
+        response['lifepoint'] =~ /.*\[(.+?)\].*delete.*/
     end
 
 end
