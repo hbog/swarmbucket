@@ -36,22 +36,6 @@ class SwarmBucket
         end
     end
 
-    def execute(request)
-        response = Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
-            http.request request
-        end
-        return response unless Net::HTTPRedirection === response
-        # If we resceive a redirect, update the request uri to the given location
-        # and re-issue the request
-        location = response['location']
-        request.uri = URI location
-        execute request
-    end
-
-    def swarmuri(name)
-        URI "#{@baseurl}/#{name}"
-    end
-
     def initialize(domain, bucket)
         @baseurl = "http://#{domain}/#{bucket}"
     end
@@ -80,6 +64,24 @@ class SwarmBucket
     def present?(name)
         request = Net::HTTP::Head.new(swarmuri name)
         Net::HTTPSuccess === execute(request)
+    end
+
+    private
+
+    def execute(request)
+        response = Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
+            http.request request
+        end
+        return response unless Net::HTTPRedirection === response
+        # If we resceive a redirect, update the request uri to the given location
+        # and re-issue the request
+        location = response['location']
+        request.uri = URI location
+        execute request
+    end
+
+    def swarmuri(name)
+        URI "#{@baseurl}/#{name}"
     end
 
 end
