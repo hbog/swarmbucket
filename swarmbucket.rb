@@ -12,10 +12,10 @@ class SwarmBucket
 
     #
     # add an 'APPEND' request type to Net::HTTP
-    class Net::HTTP::Append < Net::HTTPRequest                                      
-             METHOD = 'APPEND'                                                           
-             REQUEST_HAS_BODY = true                                                     
-             RESPONSE_HAS_BODY = true                                                    
+    class Net::HTTP::Append < Net::HTTPRequest
+             METHOD = 'APPEND'
+             REQUEST_HAS_BODY = true
+             RESPONSE_HAS_BODY = true
     end
 
     # extend the HTTP::GenericRequest class with an uri setter
@@ -66,15 +66,15 @@ class SwarmBucket
         execute request
     end
 
-    def post(name, body, contenttype, ttl=nil)                                                            
-        request = Net::HTTP::Post.new(swarmuri name)                                              
-        request.body = body                                                             
+    def post(name, body, contenttype, ttl=nil)
+        request = Net::HTTP::Post.new(swarmuri name)
+        request.body = body
         request['Content-Type'] = contenttype
         if ttl
-            expires = (Time.now + ttl).gmtime.strftime '%a, %d %b %Y %H:%M:%S GMT'     
-            request['lifepoint'] = "[#{expires}] reps=16:4, deletable=True, [] delete"      
+            expires = (Time.now + ttl).gmtime.strftime '%a, %d %b %Y %H:%M:%S GMT'
+            request['lifepoint'] = "[#{expires}] reps=16:4, deletable=True, [] delete"
         end
-        execute(request)                                                                
+        execute(request)
     end
 
     def present?(name)

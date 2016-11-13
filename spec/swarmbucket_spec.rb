@@ -5,7 +5,7 @@ describe SwarmBucket do
     let (:httpresponse) { double 'response' }
     let! (:httprequests) {[]}
 
-    # Mock the http connection returning httpresponse 
+    # Mock the http connection returning httpresponse
     # and collect the request objects
     before :each do
         http = double 'http'
@@ -39,14 +39,14 @@ describe SwarmBucket do
         end
     end
     shared_examples "http_redirected_request" do |method|
-        context 'when not redirected' do 
+        context 'when not redirected' do
             before :each do
                 expect(Net::HTTPRedirection).to receive(:===)
                 .with(httpresponse) { false }
             end
             include_examples 'http_request', method
         end
-        context 'when redirected twice' do 
+        context 'when redirected twice' do
             before :each do
                 expect(Net::HTTPRedirection).to receive(:===)
                 .with(httpresponse).and_return(true, true, false)
@@ -71,7 +71,7 @@ describe SwarmBucket do
 
     [:get, :head].each do |method|
         context "\##{method}" do
-            it_behaves_like("http_redirected_request",method) do 
+            it_behaves_like("http_redirected_request",method) do
                 let(:do_request) { swarmhttp.send method, 'objectname' }
             end
         end
@@ -90,7 +90,7 @@ describe SwarmBucket do
             subject { httprequests.last }
             context 'when ttl is not specified' do
                 before :each do
-                    swarmhttp.post 'objectname','body','content/type' 
+                    swarmhttp.post 'objectname','body','content/type'
                 end
                 it 'sets the content-type header' do
                     expect(subject['Content-Type']).to eq 'content/type'
