@@ -24,9 +24,9 @@ class SwarmBucket
     # (and keeping the headers, method, etc)
     class Net::HTTPGenericRequest
         def uri=(uri)
-            @uri = uri
-            raise ArgumentError, "uri is not URI" unless URI === @uri
-            @path = uri.request_uri
+            raise ArgumentError, "uri is not URI" unless URI === uri
+            @uri = uri.dup
+            @path = @uri.request_uri
             # update the host header if it was set
             if self['Host']
                 host = @uri.hostname.dup
@@ -34,6 +34,7 @@ class SwarmBucket
                 self['Host'] = host
             end
         end
+        @uri
     end
 
     def initialize(domain, bucket)
