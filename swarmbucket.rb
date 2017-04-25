@@ -5,10 +5,27 @@
 # The methods typically return raw Net::HTTP::Response objects.
 
 require 'net/http'
+require 'date'
+
+# swarm_metadata returns the application specific metadata headers from
+# the swarm object
+class Net::HTTPResponse
+       def swarm_metadata
+        Hash[
+            each_header.select do |k,v|
+                /^castor-.+$/i.match(k) && ! /^castor-system/i.match(k)
+            end +
+            each_header.select do |k,v|
+                /^x-[^-]+-meta-/i.match(k) && /^x-[^-]+-meta$/i.match(k)
+            end 
+        ]
+        .reduce({}){ |hash, (k,v)| hash.merge(k.sub(/^castor-/i,'') => v) }
+       end
+end
 
 class SwarmBucket
 
-    attr_reader :baseurl
+    attr_reader :baseurl, :bucket, :domain
 
     #
     # add an 'APPEND' request type to Net::HTTP
@@ -38,12 +55,14 @@ class SwarmBucket
     end
 
     def initialize(domain, bucket)
+        @bucket = bucket
+        @domain = domain
         @baseurl = "http://#{domain}/#{bucket}"
     end
 
-    def get(name)
+    def get(name,&block)
         request = Net::HTTP::Get.new(swarmuri name)
-        execute request
+        execute request, &block
     end
 
     def head(name)
@@ -81,16 +100,30 @@ class SwarmBucket
 
     private
 
-    def execute(request)
-        response = Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
-            http.request request
+    def execute request, &block
+        if block_given?
+            Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
+                http.request request do |resp|
+                    if Net::HTTPRedirection === resp
+                        location = resp['location']
+                        request.uri = URI location
+                        execute request, &block
+                    else
+                        yield resp
+                    end
+                end
+            end
+        else
+            response = Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
+                http.request request
+            end
+            return response unless Net::HTTPRedirection === response
+            # If we resceive a redirect, update the request uri to the given
+            # location and re-issue the request
+            location = response['location']
+            request.uri = URI location
+            execute request
         end
-        return response unless Net::HTTPRedirection === response
-        # If we resceive a redirect, update the request uri to the given
-        # location and re-issue the request
-        location = response['location']
-        request.uri = URI location
-        execute request
     end
 
     def swarmuri(name)
