@@ -1,7 +1,7 @@
 require_relative '../swarmbucket'
 
 describe SwarmBucket do
-    let! (:swarmhttp) { SwarmBucket.new 'domain','bucket' }
+    let! (:swarmhttp) { SwarmBucket.new domain: 'domain', bucket: 'bucket' }
     let (:httpsuccess) { Net::HTTPSuccess.new(1.1, '200', 'OK')}
     let (:httpredirect) { Net::HTTPRedirection.new(1.1, '301', 'Moved Permanently')}
     let (:httpnotfound) { Net::HTTPNotFound.new(1.1, '404', 'Not Found')}
@@ -84,7 +84,7 @@ describe SwarmBucket do
                        when :get, :head
                            [ method, 'objectname' ]
                        when :post
-                           [method, 'objectname','body','content/type' ]
+                           [ method, 'objectname','body', type: 'content/type' ]
                        end
                 let(:do_request) { swarmhttp.send *args }
             end
@@ -153,7 +153,7 @@ describe SwarmBucket do
             subject { httprequests.last }
             context 'when ttl is not specified' do
                 before :each do
-                    swarmhttp.post 'objectname','body','content/type'
+                    swarmhttp.post 'objectname', 'body', type: 'content/type'
                 end
                 it 'sets the content-type header' do
                     expect(subject['Content-Type']).to eq 'content/type'
@@ -164,7 +164,7 @@ describe SwarmBucket do
             end
             context 'when ttl is specified' do
                 before :each do
-                    swarmhttp.post 'objectname','body','content/type', 14400
+                    swarmhttp.post 'objectname','body',type: 'content/type', ttl:14400
                 end
                 it 'sets a lifepoint header' do
                     expect(subject['lifepoint'])

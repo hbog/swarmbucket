@@ -6,6 +6,7 @@
 
 require 'net/http'
 require 'date'
+require 'elasticsearch'
 
 # swarm_metadata returns the application specific metadata headers from
 # the swarm object
@@ -17,7 +18,7 @@ class Net::HTTPResponse
             end +
             each_header.select do |k,v|
                 /^x-[^-]+-meta-/i.match(k) && /^x-[^-]+-meta$/i.match(k)
-            end 
+            end
         ]
         .reduce({}){ |hash, (k,v)| hash.merge(k.sub(/^castor-/i,'') => v) }
        end
@@ -25,7 +26,7 @@ end
 
 class SwarmBucket
 
-    attr_reader :baseurl, :bucket, :domain
+    attr_reader :baseurl, :bucket, :domain, :domainid, :bucketid
 
     #
     # add an 'APPEND' request type to Net::HTTP
@@ -40,7 +41,7 @@ class SwarmBucket
     # in a generic way by overwriting the uri
     # (and keeping the headers, method, etc)
     class Net::HTTPGenericRequest
-        def uri=(uri)
+        def uri= uri
             raise ArgumentError, "uri is not URI" unless URI === uri
             @uri = uri.dup
             @path = @uri.request_uri
@@ -54,26 +55,80 @@ class SwarmBucket
         @uri
     end
 
-    def initialize(domain, bucket)
+    def initialize domain:, bucket:, index: nil
         @bucket = bucket
         @domain = domain
         @baseurl = "http://#{domain}/#{bucket}"
+        if index
+            @index = Elasticsearch::Client.new host: index
+            @domainid = search(
+                _source: false,
+                size: 1,
+                query: {
+                    filtered: {
+                        filter: {
+                            bool: {
+                                must: [
+                                    { term: { _type: 'DOMAIN' } },
+                                    { term: { name: @domain} }
+                                ]
+                            }
+                        }
+                    }
+                }).first['_id']
+            @bucketid = search(
+                _source: false,
+                size: 1,
+                query: {
+                    filtered: {
+                        filter: {
+                            bool: {
+                                must: [
+                                    { term: { _type: 'BUCKET' } },
+                                    { term: { domainid: @domainid } },
+                                    { term: { name: @bucket} }
+                                ]
+                            }
+                        }
+                    }
+                }).first['_id']
+        end
     end
 
-    def get(name,&block)
+    def search query
+        raise unless @index
+        @index.search(body: query)['hits']['hits']
+    end
+
+    def find source: false, size: 1, query: {matchall: {}}, boolfilter: {}
+        body = {
+            _source: source,
+            size: size,
+                query: query,
+                filter: {
+                    bool: {
+                        must: {
+                            term: { contextid: @bucketid}
+                        }.merge(boolfilter),
+                    }
+                }
+        }
+        @index.search(body: body)['hits']['hits']
+    end
+    def get name,&block
         request = Net::HTTP::Get.new(swarmuri name)
         execute request, &block
     end
 
-    def head(name)
+    def head name
         request = Net::HTTP::Head.new(swarmuri name)
         execute request
     end
 
-    def post(name, body, contenttype, ttl=nil)
+    def post name, body, type:, ttl:nil
         request = Net::HTTP::Post.new(swarmuri name)
         request.body = body
-        request['Content-Type'] = contenttype
+        request['Content-Type'] = type
         if ttl
             expires = (Time.now + ttl)
             .gmtime.strftime '%a, %d %b %Y %H:%M:%S GMT'
@@ -90,7 +145,7 @@ class SwarmBucket
     #    - false when the object does not exist
     #    - true when object exists without a delete lifepoint
     #    - the ttl (Fixnum) when the object exists with a delete lifepoint
-    def present?(name)
+    def present? name
         request = Net::HTTP::Head.new(swarmuri name)
         response = execute request
         return false unless Net::HTTPSuccess === response
@@ -126,14 +181,14 @@ class SwarmBucket
         end
     end
 
-    def swarmuri(name)
+    def swarmuri name
         URI "#{@baseurl}/#{name}"
     end
 
     # Returns the ttl of the object when a delete lifepoint is set
     # Otherwise return nil
-    def ttl (response)
-        DateTime.httpdate($1).to_time.to_i - Time.now.gmtime.to_i if 
+    def ttl response
+        DateTime.httpdate($1).to_time.to_i - Time.now.gmtime.to_i if
         response['lifepoint'] =~ /.*\[(.+?)\].*delete.*/
     end
 
