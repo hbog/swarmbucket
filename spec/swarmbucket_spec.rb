@@ -63,6 +63,56 @@ describe SwarmBucket do
         end
     end
 
+    shared_examples 'present?' do
+            context 'when the object does not exist' do
+                before :each do
+                    allow(Net::HTTP).to receive(:start).and_return(httpnotfound)
+                    .and_yield(http)
+                end
+                it { is_expected.to be false }
+            end
+            context 'when the object exists' do
+                before :each do
+                    allow(Net::HTTP).to receive(:start).and_return(httpredirect,httpsuccess)
+                    .and_yield(http)
+                end
+                context 'without a lifepoint' do
+                    before :each do
+                        allow(httpsuccess).to receive(:[])
+                        .with('lifepoint') { nil }
+                    end
+                    it { is_expected.to be true }
+                end
+                context 'with a delete lifepoint' do
+                    before :each do
+                        allow(httpsuccess).to receive(:[])
+                        .with('lifepoint')
+                        .and_return "[Wed, 29 Jun 2016 13:30:39 GMT] reps:16:4 deletable=True, [] delete"
+                    end
+                    it { is_expected.to be 14400 }
+                end
+                context 'with a non-delete lifepoint' do
+                    before :each do
+                        allow(httpsuccess).to receive(:[])
+                        .with('lifepoint')
+                        .and_return "[Wed, 29 Jun 2016 13:30:39 GMT] reps:16:4 deletable=True, [] reps:2"
+                    end
+                    it { is_expected.to be true }
+                end
+                context 'with mutliple lifepoints' do
+                    before :each do
+                        allow(httpsuccess).to receive(:[])
+                        .with('lifepoint') {[
+                            "[Wed, 29 Jun 2016 12:30:39 GMT] reps:16:4 deletable=False",
+                            "[Wed, 29 Jun 2016 13:30:39 GMT] reps:2 deletable=True",
+                            "[] delete"
+                        ].join ','}
+                    end
+                    it { is_expected.to be 14400 }
+                end
+            end
+    end
+
     context '#new' do
         it 'sets the baseurl' do
             expect(swarmhttp.baseurl).to eq 'http://domain/bucket'
@@ -117,53 +167,12 @@ describe SwarmBucket do
         end
         context '#present?' do
             subject { swarmhttp.present? 'objectname' }
-            context 'when the object does not exist' do
-                before :each do
-                    allow(Net::HTTP).to receive(:start).and_return(httpnotfound)
-                    .and_yield(http)
-                end
-                it { is_expected.to be false }
-            end
-            context 'when the object exists' do
-                before :each do
-                    allow(Net::HTTP).to receive(:start).and_return(httpredirect,httpsuccess)
-                    .and_yield(http)
-                end
-                context 'without a lifepoint' do
-                    before :each do
-                        allow(httpsuccess).to receive(:[])
-                        .with('lifepoint') { nil }
-                    end
-                    it { is_expected.to be true }
-                end
-                context 'with a delete lifepoint' do
-                    before :each do
-                        allow(httpsuccess).to receive(:[])
-                        .with('lifepoint')
-                        .and_return "[Wed, 29 Jun 2016 13:30:39 GMT] reps:16:4 deletable=True, [] delete"
-                    end
-                    it { is_expected.to be 14400 }
-                end
-                context 'with a non-delete lifepoint' do
-                    before :each do
-                        allow(httpsuccess).to receive(:[])
-                        .with('lifepoint')
-                        .and_return "[Wed, 29 Jun 2016 13:30:39 GMT] reps:16:4 deletable=True, [] reps:2"
-                    end
-                    it { is_expected.to be true }
-                end
-                context 'with mutliple lifepoints' do
-                    before :each do
-                        allow(httpsuccess).to receive(:[])
-                        .with('lifepoint') {[
-                            "[Wed, 29 Jun 2016 12:30:39 GMT] reps:16:4 deletable=False",
-                            "[Wed, 29 Jun 2016 13:30:39 GMT] reps:2 deletable=True",
-                            "[] delete"
-                        ].join ','}
-                    end
-                    it { is_expected.to be 14400 }
-                end
-            end
+            include_examples 'present?'
+        end
+
+        context '::present?' do
+            subject { SwarmBucket.present?(URI 'http://domain/bucket/objectname') }
+            include_examples 'present?'
         end
     end
 end
