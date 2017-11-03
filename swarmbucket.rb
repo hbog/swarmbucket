@@ -6,8 +6,60 @@
 
 require 'date'
 require 'net/http'
+require 'net/http/digest_auth'
 
 class SwarmBucket
+
+    class Request
+
+        def initialize request, username=nil, password=nil
+            @request = request
+            @username = username
+            @password = password
+            @count = 0
+            connect
+        end
+
+        def connect
+            @http = Net::HTTP.start @request.uri.hostname, @request.uri.port
+        end
+
+        def disconnect
+            @http.finish
+        end
+
+        def reconnect
+            disconnect
+            connect
+        end
+
+        def execute
+            @count += 1
+            raise 'too many redirects or authentication failures' unless @count < 5
+            response = @http.request @request
+            case response
+            when Net::HTTPRedirection
+                # If we resceive a redirect, update the request uri to the given
+                # location and re-issue the request
+                location = response['location']
+                @request.uri = URI location
+                reconnect
+                execute
+            when Net::HTTPUnauthorized
+                digest_auth = Net::HTTP::DigestAuth.new
+                uri = @request.uri
+                uri.user = @username
+                uri.password = @password
+                auth = digest_auth.auth_header uri, response['www-authenticate'],
+                    @request.method
+                @request.add_field 'Authorization', auth
+                execute
+            else
+                disconnect
+                response # return the response from within the recursion !
+            end
+        end
+    end
 
     attr_reader :baseurl
 
@@ -38,52 +90,31 @@ class SwarmBucket
         @uri
     end
 
-    class << self
-        def present?(uri)
-            raise ArgumentError, "uri is not URI" unless URI === uri
-            request = Net::HTTP::Head.new(uri)
-            response = execute request
-            return false unless Net::HTTPSuccess === response
-            myttl = ttl response
-            myttl.nil? ? true : myttl
-        end
-
-        def execute(request)
-            response = Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
-                http.request request
-            end
-            return response unless Net::HTTPRedirection === response
-            # If we resceive a redirect, update the request uri to the given
-            # location and re-issue the request
-            location = response['location']
-            request.uri = URI location
-            execute request
-        end
-
-        def ttl (response)
-            DateTime.httpdate($1).to_time.to_i - Time.now.gmtime.to_i if
-            response['lifepoint'] =~ /.*\[(.+?)\].*delete.*/
-        end
-    end
-
-    def initialize(domain, bucket)
+    def initialize domain:, bucket:, username: nil, password: nil
         @baseurl = "http://#{domain}/#{bucket}"
+        @username = username
+        @password = password
     end
 
-    def get(name)
+    def submit request
+        SwarmBucket::Request.new(request, @username, @password).execute
+    end
+
+    def get name
         request = Net::HTTP::Get.new(swarmuri name)
-        self.class.execute request
+        submit request
     end
 
-    def head(name)
+    def head name
         request = Net::HTTP::Head.new(swarmuri name)
-        self.class.execute request
+        submit request
     end
 
-    def post(name, body, contenttype, ttl=nil)
+    def post name, body, contenttype, ttl=nil
         request = Net::HTTP::Post.new(swarmuri name)
         request.body = body
         request['Content-Type'] = contenttype
+        request['Castor-Authorization'] = 'post=owner@, change=owner@'
         if ttl
             expires = (Time.now + ttl)
             .gmtime.strftime '%a, %d %b %Y %H:%M:%S GMT'
@@ -92,7 +123,7 @@ class SwarmBucket
                 "[] delete"
             ]
         end
-        self.class.execute request
+        submit request
     end
 
     # Check if an object exists
@@ -100,17 +131,16 @@ class SwarmBucket
     #    - false when the object does not exist
     #    - true when object exists without a delete lifepoint
     #    - the ttl (Fixnum) when the object exists with a delete lifepoint
-    def present?(name)
-        self.class.present?(swarmuri name)
+    def present? name
+        response = head name
+        return false unless Net::HTTPSuccess === response
+        ttl = DateTime.httpdate($1).to_time.to_i - Time.now.gmtime.to_i if
+        response['lifepoint'] =~ /.*\[(.+?)\].*delete.*/
+        ttl.nil? ? true : ttl
     end
 
-    private
-
-    def swarmuri(name)
+    def swarmuri name
         URI "#{@baseurl}/#{name}"
     end
-
-    # Returns the ttl of the object when a delete lifepoint is set
-    # Otherwise return nil
 
 end
