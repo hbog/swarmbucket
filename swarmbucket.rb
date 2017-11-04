@@ -16,7 +16,7 @@ class SwarmBucket
             @request = request
             @username = username
             @password = password
-            @count = 0
+            @redirections = 0
             connect
         end
 
@@ -34,11 +34,11 @@ class SwarmBucket
         end
 
         def execute
-            @count += 1
-            raise 'too many redirects or authentication failures' unless @count < 5
             response = @http.request @request
             case response
             when Net::HTTPRedirection
+                @redirections += 1
+                raise 'too many redirects' if @redirections > 2
                 # If we resceive a redirect, update the request uri to the given
                 # location and re-issue the request
                 location = response['location']
@@ -46,17 +46,18 @@ class SwarmBucket
                 reconnect
                 execute
             when Net::HTTPUnauthorized
+                # retrut the request with a digest authorization header unless
+                # we already did, 
+                return response if @request['Authorization']
                 digest_auth = Net::HTTP::DigestAuth.new
-                uri = @request.uri
-                uri.user = @username
-                uri.password = @password
-                auth = digest_auth.auth_header uri, response['www-authenticate'],
-                    @request.method
-                @request.add_field 'Authorization', auth
+                @request.uri.user = @username
+                @request.uri.password = @password
+                @request['Authorization'] = digest_auth.auth_header @request.uri,
+                    response['www-authenticate'], @request.method
                 execute
             else
                 disconnect
-                response # return the response from within the recursion !
+                response # return the response from within the recursion
             end
         end
     end
