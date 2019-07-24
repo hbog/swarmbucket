@@ -170,11 +170,11 @@ describe SwarmBucket do
         end
     end
 
-    [:get, :head, :post, :copy].each do |method|
+    [:get, :head, :post, :copy, :delete].each do |method|
         context "\##{method}" do
             it_behaves_like("http_redirected_request", method) do
                 args = case method
-                       when :get, :head
+                       when :get, :head, :delete
                            [ method, 'objectname' ]
                        when :copy
                            [ method, 'objectname', { header: 'header' } ]

@@ -117,6 +117,11 @@ class SwarmBucket
         submit request
     end
 
+    def delete name
+        request = Net::HTTP::Delete.new(swarmuri name)
+        submit request
+    end
+
     def post name, body, contenttype, ttl=nil
         request = Net::HTTP::Post.new(swarmuri name)
         request.body = body
