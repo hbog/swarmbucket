@@ -113,7 +113,7 @@ class SwarmBucket
     end
 
     def head name
-        request = Net::HTTP::Head.new(swarmuri name)
+        request = Net::HTTP::Head.new(swarmuri name, {verbose: true})
         submit request
     end
 

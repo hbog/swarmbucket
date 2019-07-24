@@ -193,6 +193,15 @@ describe SwarmBucket do
             # Set current time during test at 2016-06-29 11:30:39 +0200
             allow(Time).to receive(:now) { Time.at 1467192639 }
         end
+        context 'head' do
+            subject { @httprequests }
+            before :each do
+              swarmhttp.head 'objectname'
+            end
+            it 'sets the verbose parameter' do
+              expect(URI.decode_www_form(subject.first.uri.query)).to include([ 'verbose', 'true' ])
+            end
+        end
         context 'copy' do
             subject { @httprequests }
             before :each do
