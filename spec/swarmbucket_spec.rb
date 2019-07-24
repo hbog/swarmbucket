@@ -46,7 +46,7 @@ describe SwarmBucket do
             .to end_with(method.to_s.upcase)
         end
         it 'has the correct request path' do
-            expect(@httprequests.map &:path)
+            expect(@httprequests.map(&:uri).map(&:path))
             .to start_with '/bucket/objectname'
         end
         it 'returns the response object' do
@@ -72,8 +72,10 @@ describe SwarmBucket do
             it 'follows the redirection' do
                 expect(Net::HTTP).to have_received(:start)
                 .with('newhost',80).twice
-                expect(@httprequests.map &:path)
-                .to eq ['/bucket/objectname','/newpath?param','/newpath?param']
+                expect(@httprequests.map(&:uri).map(&:path))
+                .to eq ['/bucket/objectname','/newpath','/newpath']
+                expect(@httprequests.map(&:uri).map(&:query))
+                .to include 'param'
             end
         end
         context 'when too many redirects' do
@@ -98,7 +100,7 @@ describe SwarmBucket do
             subject { @httprequests.last }
             it 'adds an digest authorization header' do
                 expect(subject['authorization']).to match(
-                    'Digest username="username", realm="domain", algorithm=MD5, qop=auth, uri="/bucket/objectname",.*, opaque="opaque"')
+                  'Digest username="username", realm="domain", algorithm=MD5, qop=auth, uri="/bucket/objectname.*",.*, opaque="opaque"')
             end
         end
         context 'when unauthorized and authorization fails, the response' do
@@ -168,12 +170,14 @@ describe SwarmBucket do
         end
     end
 
-    [:get, :head, :post].each do |method|
+    [:get, :head, :post, :copy].each do |method|
         context "\##{method}" do
             it_behaves_like("http_redirected_request", method) do
                 args = case method
                        when :get, :head
                            [ method, 'objectname' ]
+                       when :copy
+                           [ method, 'objectname', { header: 'header' } ]
                        when :post
                            [method, 'objectname','body','content/type' ]
                        end
@@ -188,6 +192,21 @@ describe SwarmBucket do
             end
             # Set current time during test at 2016-06-29 11:30:39 +0200
             allow(Time).to receive(:now) { Time.at 1467192639 }
+        end
+        context 'copy' do
+            subject { @httprequests }
+            before :each do
+              swarmhttp.copy 'objectname', { headerkey: 'headervalue' }
+            end
+            it 'sets the headers' do
+              expect(subject.first[:headerkey]).to eq 'headervalue'
+            end
+            it 'the headers are preserved during redirection' do
+              expect(subject.last[:headerkey]).to eq 'headervalue'
+            end
+            it 'sets the preserve parameter' do
+              expect(URI.decode_www_form(subject.first.uri.query)).to include([ 'preserve', 'true' ])
+            end
         end
         context '#post' do
             subject { @httprequests.last }
@@ -222,3 +241,4 @@ describe SwarmBucket do
 
     end
 end
+

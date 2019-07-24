@@ -47,7 +47,7 @@ class SwarmBucket
                 execute
             when Net::HTTPUnauthorized
                 # retrut the request with a digest authorization header unless
-                # we already did, 
+                # we already did,
                 return response if @request['Authorization']
                 digest_auth = Net::HTTP::DigestAuth.new
                 @request.uri.user = @username
@@ -106,6 +106,12 @@ class SwarmBucket
         submit request
     end
 
+    def copy name, headers
+        request = Net::HTTP::Copy.new(swarmuri name, {preserve: true})
+        headers.each { |k,v| request[k] = v }
+        submit request
+    end
+
     def head name
         request = Net::HTTP::Head.new(swarmuri name)
         submit request
@@ -140,8 +146,10 @@ class SwarmBucket
         ttl.nil? ? true : ttl
     end
 
-    def swarmuri name
-        URI "#{@baseurl}/#{name}"
+    def swarmuri name, params = nil
+        uri = URI "#{@baseurl}/#{name}"
+        uri.query = URI.encode_www_form(params) unless (params.nil? || params.empty?)
+        uri
     end
 
 end
