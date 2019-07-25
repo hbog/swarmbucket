@@ -216,6 +216,9 @@ describe SwarmBucket do
             it 'sets the preserve parameter' do
               expect(URI.decode_www_form(subject.first.uri.query)).to include([ 'preserve', 'true' ])
             end
+            it 'sets the gencontentmd5 parameter' do
+              expect(URI.decode_www_form(subject.first.uri.query)).to include([ 'gencontentmd5', 'true' ])
+            end
         end
         context '#post' do
             subject { @httprequests.last }

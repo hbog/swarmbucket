@@ -107,7 +107,11 @@ class SwarmBucket
     end
 
     def copy name, headers
-        request = Net::HTTP::Copy.new(swarmuri name, {preserve: true})
+        parameter_defaults = {
+          preserve: true,
+          gencontentmd5: true
+        }
+        request = Net::HTTP::Copy.new(swarmuri(name, parameter_defaults))
         headers.each { |k,v| request[k] = v }
         submit request
     end
